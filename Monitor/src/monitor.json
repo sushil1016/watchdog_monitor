@@ -1,0 +1,15 @@
+{
+  "RULE_ENGINE": {
+    "rule_engine_uri": "http://10.197.54.164",
+    "rule_engine_port": "3000"
+  },
+  "BASIC_URL_APPENDERS": {
+    "project_uri_appender":"get/project",
+    "logdb_uri_appender":"get/logdb_uri",
+    "analyser_uri_appender":"get/analyser_uri",
+    "interface_uri_appender":"get/interface_address"
+  },
+  "ADVANCED_URL_APPENDERS":{
+    "cpe_ids_uri_appenders": "get/cpe_ids"
+  }
+}
