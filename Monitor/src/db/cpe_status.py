@@ -113,8 +113,6 @@ class CPEStatus(object):
                 logger.error("No row found...")
                 status = False
             else:  # Expecting just single row
-                print(rows)
-                print("osd type ", type(osd))
                 for processing_date, osd in rows:
                     logger.info('processing_date= ' + str(processing_date))
                     logger.info('osd= ' + str(osd))

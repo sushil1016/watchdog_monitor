@@ -3,6 +3,7 @@
 import os
 import sys
 import logging.config
+from time import sleep
 
 try:
     import configparser
@@ -10,9 +11,7 @@ except ImportError:
     import ConfigParser as configparser
 
 sys.path.append("interface")
-from http_request import HttpRequest
-STATUS_HTTP_OK = 200
-STATUS_CONNECTION_ERROR = 420
+from http_request import *
 
 logging.config.fileConfig("logger.conf")
 logger = logging.getLogger("MONITOR")
@@ -32,7 +31,7 @@ PH Server response codes
 
 
 class PHProxy(HttpRequest):
-    def __init__(self, uri):
+    def __init__(self, uri, version, username, password):
         HttpRequest.__init__(self, uri)
 
     def read_config(self):
@@ -50,7 +49,7 @@ class PHProxy(HttpRequest):
         except:
             raise configparser.NoSectionError('No such section in config file')
 
-    def get_osd_messages(self, cpe_id, days_back=100):
+    def get_err_timestamp_map(self, cpe_id, days_back=100):
         ph_uri='ph.com'
         logger.info("Fetching OSD errors from server, for cpe " + str(cpe_id) + "from last " +str(days_back) + " days")
         # [http://localhost:9090/panorama-ui/nbi/netmap/v1.1/json/device/{device-id}/osd?staleness={n}&daysBack={n}]
@@ -60,10 +59,33 @@ class PHProxy(HttpRequest):
 
         get_osd_uri = ph_uri + '/' + 'panorama-ui' + '/nbi' + '/netmap' + '/v1.1' + '/json' + '/device/' + str(cpe_id) + '/osd' + '?staleness=' + '0' +'&daysBack=' + '1'
         logger.info('get osd uri' + str(get_osd_uri))
-        json_response = PHProxy.make_request(self, 'GET', '/get/osd')
-        osd_err_code_list = []
-        if json_response['status_code'] == STATUS_HTTP_OK:
-            for doc in json_response['osdMessages']:
-                osd_err_code_list.append(doc['code'])
-                logger.info("osd error list=" + str(osd_err_code_list))
-        return osd_err_code_list
+        ret_value = True, [], []
+        while True:
+            json_response = PHProxy.make_request(self, 'GET', '/v1.1/json/device/' + str(cpe_id) + '/osd?staleness=*&daysBack=*')
+            if json_response['status_code'] == status_codes['STATUS_OK']:
+                logger.info("successful server response "+str(json_response))
+                if json_response['has_error']:
+                    logger.fatal("error reading server response")
+                else:
+                    try:
+                        err_to_time_map = dict()
+                        err_list = []
+                        for doc in json_response["osdMessages"]:
+                            info = dict()
+                            info[doc["code"]] = doc["timestamp"]
+                            err_to_time_map.update(info)
+                            err_list.append(doc["code"])
+                        logger.info("osd error list=" + str(err_to_time_map))
+                        ret_value = False, err_list, err_to_time_map
+                    except:
+                        logger.fatal("unable to read json doc")
+                        ret_value = True, [], []
+                break
+            elif json_response['status_code'] == status_codes['CONNECTION_REFUSED']:
+                logger.error("Connection Refused, Trying Again!!!")
+                sleep(5)
+                continue
+            else:
+                logger.fatal("Client Error in http response " + str(json_response['status_code']))
+                break
+        return ret_value

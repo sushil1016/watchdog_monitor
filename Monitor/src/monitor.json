@@ -1,7 +1,7 @@
 {
   "RULE_ENGINE": {
-    "rule_engine_uri": "http://10.197.54.164",
-    "rule_engine_port": "3000"
+    "rule_engine_uri": "http://0.0.0.0",
+    "rule_engine_port": "0000"
   },
   "BASIC_URL_APPENDERS": {
     "project_uri_appender":"get/project",

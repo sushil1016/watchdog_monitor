@@ -1,0 +1,19 @@
+{
+"cpeid": "number",
+"enforceRule": "boolean",
+"rulesMap":
+[
+{
+"error": "number",
+"type": "time-depth",
+"timeFrom": "epoch time",
+"timeTo": "epoch time"
+},
+{
+"error": "number",
+"type": "time-depth",
+"timeFrom": "epoch time",
+"timeTo": "epoch time"
+}
+]
+}

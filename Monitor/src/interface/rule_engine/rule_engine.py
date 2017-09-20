@@ -7,6 +7,7 @@ from http_request import HttpRequest
 
 STATUS_HTTP_OK = 200
 STATUS_CONNECTION_ERROR = 420
+INTERNAL_SERVER_ERROR = 501
 
 logging.config.fileConfig("logger.conf")
 logger = logging.getLogger("MONITOR")
@@ -19,81 +20,132 @@ class RulesEngine(HttpRequest):
         self.rule_engine_port = port
         HttpRequest.__init__(self, uri + ':' + port)
 
-    def get_project_name(self):
-        json_response = RulesEngine.make_request(self, 'GET', '/get/project')
-        for key, value in json_response.items():
-            if "error_code" == key:
-                return 'error'
-            elif "project" == key:
-                return value
-        logger.error("No project found in response")
-        return 'error'
-    # TODO: Recursive calls if connection errors and http error handling
-
-    def get_proxy_agent_name(self):
-        json_response = RulesEngine.make_request(self, 'GET', '/get/interface')
-        for key, value in json_response.items():
-            if "error_code" == key:
-                return 'error'
-            elif "interface" == key:
-                return value
-        logger.error("No interface found in response")
-        return 'error'
-    # TODO: Recursive calls if connection errors and http error handling
-
-    def get_proxy_agent_uri(self):
-        json_response = RulesEngine.make_request(self, 'GET', '/get/interface_uri')
-        for key, value in json_response.items():
-            if "error_code" == key:
-                return 'error'
-            elif "interface_uri" == key:
-                return value
-        logger.error("No interface uri found in response")
-        return 'error'
-    # TODO: Recursive calls if connection errors and http error handling
-
-    def get_logs_db_uri(self):
-        json_response = RulesEngine.make_request(self, 'GET', '/get/logdb_uri')
-        if json_response['status_code'] == STATUS_HTTP_OK:
-            for key, value in json_response.items():
-                if "error_code" == key:
-                    return 'error'
-                elif "logdb_uri" == key:
-                    return value
-            logger.error("No logdb_uri found in response")
-            return 'error'
-        elif json_response['status_code'] == STATUS_CONNECTION_ERROR:
-            logger.error("Connection Refused, Trying Again!!!")
-            sleep(2)
-            RulesEngine.get_logs_db_uri(self)
-        else:
-            logger.fatal("HTTP Error"+str(json_response['status_code']))
-            return 'error'
-            # TODO Handle all http error cases
-
-    def get_analyser_uri(self):
-        json_response = RulesEngine.make_request(self, 'GET', '/get/analyser_uri')
-        for key, value in json_response.items():
-            if "error_code" == key:
-                return 'error'
-            elif "analyser_uri" == key:
-                return value
-        logger.error("No analyser uri found in response")
-        return 'error'
-    # TODO: Recursive calls if connection errors and http error handling
+    def get_configuration(self):
+        ret_value = True, ''
+        while True:
+            json_response = RulesEngine.make_request(self, 'GET', '/smartmonitor/rules-engine/v1.0/configuration')
+            if json_response['status_code'] == STATUS_HTTP_OK:
+                if not json_response['has_error']:
+                    logger.info("successful server response= " + str(json_response))
+                    ret_value = False, json_response
+                else:
+                    logger.error("Invalid JSON response in configuration response")
+                break
+            elif json_response['status_code'] == STATUS_CONNECTION_ERROR \
+                    or json_response['status_code'] == INTERNAL_SERVER_ERROR:
+                logger.error("Connection Refused, Trying Again!!!")
+                sleep(5)
+                continue
+            else:
+                logger.fatal("HTTP Error" + str(json_response['status_code']))
+                ret_value = True, json_response
+                break
+        return ret_value
 
     def get_cpe_ids(self):
-        json_response = RulesEngine.make_request(self, 'GET', '/get/cpe_ids')
-        for key, value in json_response.items():
-            if "error_code" == key:
-                return 'error'
-            elif "cpe_ids" == key:
-                return value
-        logger.error("No cpe_ids found in response")
-        return 'error'
-    # TODO: Recursive calls if connection errors and http error handling
+        ret_value = True, []
+        while True:
+            json_response = RulesEngine.make_request(self, 'GET', '/smartmonitor/rules-engine/v1.0/devices')
+            if json_response["status_code"] == STATUS_HTTP_OK:
+                if not json_response["has_error"]:
+                    logger.info("successful server response= " + str(json_response))
+                    if json_response["cpe_ids"]:
+                        cpe_id_list = json_response["cpe_ids"]
+                        ret_value = False, cpe_id_list
+                    else:
+                        logger.error("No cpe_ids found in response")
+                else:
+                    logger.error("Invalid JSON response in configuration response")
+            elif json_response['status_code'] == STATUS_CONNECTION_ERROR \
+                    or json_response['status_code'] == INTERNAL_SERVER_ERROR:
+                logger.error("Connection Refused, Trying Again!!!")
+                sleep(5)
+                continue
+            else:
+                logger.fatal("HTTP Error"+str(json_response['status_code']))
+            break
+        return ret_value
+
+    def get_cpe_rules(self, cpe_id, server_err_list):
+        ret_value = True, [], []  # True indicates error state
+        while True:
+            json_response = RulesEngine.make_request(self, 'GET', '/smartmonitor/rules-engine/v1.0/devices/' + str(cpe_id) + '/rules')
+            if json_response['status_code'] == STATUS_HTTP_OK:
+                if not json_response['has_error']:
+                    logger.info("server response= " + str(json_response))
+
+                    try:
+                        #forced_sampling = json_response['enforceRule']
+                        rules_map_err_list = []
+                        for item in json_response['rulesMap']:
+                            rules_map_err_list.append(item['error'])
+
+                        logger.info("error list from rulesMap is "+str(rules_map_err_list))
+                    except:
+                        logger.fatal("Error reading data from json")
+                        break
+
+                    common_err_list = list((set(server_err_list).intersection(rules_map_err_list)))
+                    uncommon_err_list = list((set(server_err_list).difference(common_err_list)))
+
+                    logger.info("Sampling to be run on common errors from ruleMap and serverOSD I.e."
+                                " "+str(common_err_list))
+                    logger.info("Usual processing to be run on server OSD's which are not to be sampled"
+                                " by ruleMap I.e. " + str(uncommon_err_list))
+
+                    sampling_info_list = []  # Contains list of dictionary containing sampling information
+                    if common_err_list:
+                        try:
+                            for osd in common_err_list:
+                                for err in json_response['rulesMap']:
+                                    if err['error'] == osd:
+                                        info = dict()
+                                        info['error'] = err['error']
+                                        info['from_date'] = err['timeFrom']
+                                        info['to_date'] = err['timeTo']
+                                        sampling_info_list.append(info)
+                        except:
+                            logger.fatal("Error reading server response ")
+                            break
+
+                    if sampling_info_list:
+                        logger.info("Sampling to be performed on "+str(sampling_info_list))
+                    ret_value = False, uncommon_err_list, sampling_info_list
+                else:
+                    logger.error("Not a valid json as a response to get_cpe_rules api")
+            elif json_response['status_code'] == STATUS_CONNECTION_ERROR \
+                    or json_response['status_code'] == INTERNAL_SERVER_ERROR:
+                logger.error("Connection Refused, Trying Again!!!")
+                sleep(5)
+                continue
+            else:
+                logger.fatal("HTTP Error" + str(json_response['status_code']))
+            break
+        return ret_value
+
+    def get_cpe_usecases(self, cpe_id, err_code):
+        ret_value = True, []
+        while True:
+            json_response = RulesEngine.make_request(self, 'GET', '/smartmonitor/rules-engine/v1.0/errors/'
+                                                     + str(err_code))
+            logger.info("server response= " + str(json_response))
+            if json_response['status_code'] == STATUS_HTTP_OK:
+                if not json_response['has_error']:
+                        usecase_map_list = json_response['usecaseMap']
+                        ret_value = False, usecase_map_list
+                else:
+                    logger.error("Not a valid json as a response to get_cpe_usecases api")
+            elif json_response['status_code'] == STATUS_CONNECTION_ERROR \
+                    or json_response['status_code'] == INTERNAL_SERVER_ERROR:
+                logger.error("Connection Refused, Trying Again!!!")
+                sleep(5)
+                continue
+            else:
+                logger.fatal("HTTP Error" + str(json_response['status_code']))
+            break
+        return ret_value
 
     def is_general_uc_supported(self):
-        return True
-    # TODO: GET call to RE. Recursive calls if connection errors and http error handling
+        return False
+    # TODO: impliment this function based on rule engine
 

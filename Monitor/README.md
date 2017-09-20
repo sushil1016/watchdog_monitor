@@ -67,7 +67,13 @@ Monitor component is a part of STB Health Monitor which is responsible for inter
 
 
 #### Starting Monitor
-
+modify rule_engine_uri and port in monitor.json
+This should be the server ip where rule engineis running
+{
+  "RULE_ENGINE": {
+    "rule_engine_uri": "http://0.0.0.0",
+    "rule_engine_port": "0000"
+  },
 ```
 cd Monitor/src
 python monitor_main.py
