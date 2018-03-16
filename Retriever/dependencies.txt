@@ -1,0 +1,5 @@
+py>=1.4.34
+pycparser>=2.18
+pysftp>=0.2.9
+pytest>=3.2.1
+urllib3>=1.22 
